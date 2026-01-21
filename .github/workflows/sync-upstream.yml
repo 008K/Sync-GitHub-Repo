@@ -46,7 +46,6 @@ jobs:
           MATRIX_JSON=$(echo "$SYNC_REPOS" | jq -c .)
           echo "matrix=$MATRIX_JSON" >> $GITHUB_OUTPUT
           echo "📋 已加载 $REPO_COUNT 个同步任务"
-
   sync:
     needs: prepare
     runs-on: ubuntu-latest
@@ -62,6 +61,7 @@ jobs:
           UPSTREAM_REPO: ${{ matrix.repo.upstream }}
           TARGET_REPO: ${{ matrix.repo.target }}
           SYNC_BRANCH: ${{ matrix.repo.branch }}
+          SYNC_MIRROR: ${{ matrix.repo.mode }}
           REPO_TOKEN: ${{ secrets[matrix.repo.token] }}
         run: |
           echo "========================================" 
@@ -69,6 +69,7 @@ jobs:
           echo "   上游仓库: $UPSTREAM_REPO"
           echo "   目标仓库: $TARGET_REPO"
           echo "   同步分支: $SYNC_BRANCH"
+          echo "   镜像模式: ${SYNC_MIRROR:-'未设置'}"
           echo "========================================"
           
           SYNC_STATUS="unknown"
@@ -109,18 +110,52 @@ jobs:
             git clone --bare "$UPSTREAM_REPO" upstream-repo
             cd upstream-repo
             
-            if git push --force "$TARGET_URL" "$SYNC_BRANCH:$SYNC_BRANCH"; then
-              echo "✅ [$TARGET_REPO] 同步完成！"
-              SYNC_STATUS="synced"
+            # 判斷是否使用鏡像模式
+            if [ -z "$SYNC_MIRROR" ]; then
+                # 空值 - 普通模式（最常用）
+                echo "🔍 使用普通模式同步"
+                if git push --force "$TARGET_URL" "$SYNC_BRANCH:$SYNC_BRANCH"; then
+                    echo "✅ [$TARGET_REPO] 同步完成！"
+                    SYNC_STATUS="synced"
+                else
+                    echo "❌ [$TARGET_REPO] 同步失败！"
+                    SYNC_STATUS="failed"
+                fi
+            elif [ "$SYNC_MIRROR" = "mirror" ]; then
+                # 镜像模式
+                echo "🔍 使用镜像模式同步 (--mirror)"
+                if git push --mirror --force "$TARGET_URL"; then
+                    echo "✅ [$TARGET_REPO] 镜像同步完成！"
+                    SYNC_STATUS="synced"
+                else
+                    echo "❌ [$TARGET_REPO] 镜像同步失败！"
+                    SYNC_STATUS="failed"
+                fi
+            elif [ "$SYNC_MIRROR" = "tags" ]; then
+                # 标签模式
+                echo "🔍 使用标签模式同步 (--tags)"
+                if git push --force --tags "$TARGET_URL"; then
+                    echo "✅ [$TARGET_REPO] 标签同步完成！"
+                    SYNC_STATUS="synced"
+                else
+                    echo "❌ [$TARGET_REPO] 标签同步失败！"
+                    SYNC_STATUS="failed"
+                fi
             else
-              echo "❌ [$TARGET_REPO] 同步失败！"
-              SYNC_STATUS="failed"
+                # 處理意外值（可選的錯誤處理）
+                echo "⚠️  未知的 SYNC_MIRROR 值: '$SYNC_MIRROR'，使用普通模式"
+                if git push --force "$TARGET_URL" "$SYNC_BRANCH:$SYNC_BRANCH"; then
+                    echo "✅ [$TARGET_REPO] 同步完成！"
+                    SYNC_STATUS="synced"
+                else
+                    echo "❌ [$TARGET_REPO] 同步失败！"
+                    SYNC_STATUS="failed"
+                fi
             fi
           fi
           
           echo "status=$SYNC_STATUS" >> $GITHUB_OUTPUT
           echo "repo=$TARGET_REPO" >> $GITHUB_OUTPUT
-
       
       - name: Save sync result
         if: always()
@@ -208,7 +243,6 @@ jobs:
           echo "synced_count=$SYNCED_COUNT" >> $GITHUB_OUTPUT
           echo "skipped_count=$SKIPPED_COUNT" >> $GITHUB_OUTPUT
           echo "failed_count=$FAILED_COUNT" >> $GITHUB_OUTPUT
-
   notify:
     needs: [sync, collect]
     runs-on: ubuntu-latest
