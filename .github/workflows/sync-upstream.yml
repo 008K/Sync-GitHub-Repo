@@ -11,6 +11,7 @@ on:
 jobs:
   prepare:
     runs-on: ubuntu-latest
+    if: ${{ github.event.repository.owner.id == github.event.sender.id }}
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
@@ -68,7 +69,7 @@ jobs:
           echo "📋 同步配置："
           echo "   上游仓库: $UPSTREAM_REPO"
           echo "   目标仓库: $TARGET_REPO"
-          echo "   同步分支: $SYNC_BRANCH"
+          echo "   同步分支: ${SYNC_BRANCH:-'未设置'}"
           echo "   镜像模式: ${SYNC_MODE:-'未设置'}"
           echo "========================================"
           
@@ -109,48 +110,58 @@ jobs:
             
             git clone --bare "$UPSTREAM_REPO" upstream-repo
             cd upstream-repo
-            
-            # 判斷是否使用鏡像模式
-            if [ -z "$SYNC_MODE" ]; then
-                # 空值 - 普通模式（最常用）
-                echo "🔍 使用普通模式同步"
-                if git push --force "$TARGET_URL" "$SYNC_BRANCH:$SYNC_BRANCH"; then
-                    echo "✅ [$TARGET_REPO] 同步完成！"
-                    SYNC_STATUS="synced"
-                else
-                    echo "❌ [$TARGET_REPO] 同步失败！"
-                    SYNC_STATUS="failed"
-                fi
-            elif [ "$SYNC_MODE" = "mirror" ]; then
-                # 镜像模式
-                echo "🔍 使用镜像模式同步 (--mirror)"
-                if git push --mirror --force "$TARGET_URL"; then
-                    echo "✅ [$TARGET_REPO] 镜像同步完成！"
-                    SYNC_STATUS="synced"
-                else
-                    echo "❌ [$TARGET_REPO] 镜像同步失败！"
-                    SYNC_STATUS="failed"
-                fi
-            elif [ "$SYNC_MODE" = "tags" ]; then
-                # 标签模式
-                echo "🔍 使用标签模式同步 (--tags)"
-                if git push --tags --force "$TARGET_URL"; then
-                    echo "✅ [$TARGET_REPO] 标签同步完成！"
-                    SYNC_STATUS="synced"
-                else
-                    echo "❌ [$TARGET_REPO] 标签同步失败！"
-                    SYNC_STATUS="failed"
-                fi
+            declare -a refspecs # 声明一个数组来保存 refspecs
+            # 检查 SYNC_BRANCH 是否为空，以避免空分支列表导致的错误
+            if [ -n "$SYNC_BRANCH" ]; then
+              # 遍历 SYNC_BRANCH 中的每个分支名称，并为其构建 refspec (e.g., main:main)
+              for branch_name in $SYNC_BRANCH; do
+                refspecs+=("$branch_name:$branch_name")
+              done
             else
-                # 處理意外值（可選的錯誤處理）
-                echo "⚠️  未知的 SYNC_MODE 值: '$SYNC_MODE'，使用普通模式"
-                if git push --force "$TARGET_URL" "$SYNC_BRANCH:$SYNC_BRANCH"; then
-                    echo "✅ [$TARGET_REPO] 同步完成！"
-                    SYNC_STATUS="synced"
-                else
-                    echo "❌ [$TARGET_REPO] 同步失败！"
-                    SYNC_STATUS="failed"
-                fi
+                echo "SYNC_BRANCH 为空, 设为main:main"
+                refspecs=("main:main")
+            fi
+            # 判断是否使用镜像模式
+            if [ -z "$SYNC_MODE" ]; then
+              echo "✨ 准备同步分支: ${refspecs[@]}"
+              # 使用构建好的 refspecs 运行 git push
+              if git push --force "$TARGET_URL" "${refspecs[@]}"; then
+                  echo "✅ [$TARGET_REPO] 同步完成！"
+                  SYNC_STATUS="synced"
+              else
+                  echo "❌ [$TARGET_REPO] 同步失败！"
+                  SYNC_STATUS="failed"
+              fi
+            elif [ "$SYNC_MODE" = "mirror" ]; then
+              # 镜像模式
+              echo "🔍 使用镜像模式同步 (--mirror)"
+              if git push --mirror --force "$TARGET_URL"; then
+                  echo "✅ [$TARGET_REPO] 镜像同步完成！"
+                  SYNC_STATUS="synced"
+              else
+                  echo "❌ [$TARGET_REPO] 镜像同步失败！"
+                  SYNC_STATUS="failed"
+              fi
+            elif [ "$SYNC_MODE" = "tags" ]; then
+              # 标签模式
+              echo "🔍 使用标签模式同步 (--tags)"
+              if git push --tags --force "$TARGET_URL"; then
+                  echo "✅ [$TARGET_REPO] 标签同步完成！"
+                  SYNC_STATUS="synced"
+              else
+                  echo "❌ [$TARGET_REPO] 标签同步失败！"
+                  SYNC_STATUS="failed"
+              fi
+            else
+              # 处理意外值（可选的错误处理）
+              echo "⚠️  未知的 SYNC_MODE 值: '$SYNC_MODE'，使用普通模式"
+              if git push --force "$TARGET_URL" "${refspecs[@]}"; then
+                  echo "✅ [$TARGET_REPO] 同步完成！"
+                  SYNC_STATUS="synced"
+              else
+                  echo "❌ [$TARGET_REPO] 同步失败！"
+                  SYNC_STATUS="failed"
+              fi
             fi
           fi
           

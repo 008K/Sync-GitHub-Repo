@@ -63,16 +63,24 @@
 ```json
 [
   {
-    "upstream": "https://github.com/owner1/repo1.git",
-    "target": "myuser/repo1",
+    "upstream": "https://github.com/owner/repo.git",
+    "target": "myuser/repo",
     "branch": "main",
-    "token": "TOKEN_USER1"
+    "token": "TOKEN_USER1",
+  },
+  {
+    "upstream": "https://github.com/owner1/repo1.git",
+    "target": "myuser1/repo1",
+    "branch": "main",
+    "token": "TOKEN_USER1",
+    "mode": ""
   },
   {
     "upstream": "https://github.com/owner2/repo2.git",
     "target": "myuser2/repo2",
     "branch": "main",
-    "token": "TOKEN_USER2"
+    "token": "TOKEN_USER1",
+    "mode": "mirror"
   }
 ]
 ```
@@ -82,10 +90,13 @@
 |------|------|
 | `upstream` | 上游仓库地址（https 格式） |
 | `target` | 目标仓库（格式：`用户名/仓库名`） |
-| `branch` | 要同步的分支 |
+| `branch` | 要同步的分支, 多分支, 用空格分隔 |
 | `token` | Secrets 中的 Token 名称 |
+| `mode` | 可選 ("", mirror, tags), 上例前两个等效|
 
 
+>- mirror 同步所有分支 + 所有标签（会覆盖/删除目标仓库的其他分支）可能有bug, tags没推送, 小白方法改动fork仓任意文档, 再workflow, 就会推.
+>- tags 只推送tags, 不含分支
 ---
 👉 快速直达：
 
@@ -159,25 +170,7 @@ git push origin main
 | **适用场景** | 纯镜像，不做任何修改 | 可能有自己的改动 |
 
 ---
-## ⚙️ 高级配置
-
-### 同步所有分支和标签
-
-修改 workflow 中的推送命令：
-
-```bash
-# 同步所有分支 + 所有标签（会覆盖/删除目标仓库的其他分支）
-git push --mirror --force "$TARGET_URL"
-```
-
-### 同步多个指定分支
-
-```bash
-git push --force "$TARGET_URL" main:main dev:dev release:release
-```
-
 ### 修改同步频率
-
 编辑 `cron` 表达式：
 
 ```yaml
